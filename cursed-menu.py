@@ -331,6 +331,23 @@ def settings(stdscr):
 	stdscr.refresh()
 #	stdscr.getch()
 	stdscr.clear()
+def about(stdscr):
+	stdscr.clear()
+	stdscr.addstr(0,0, "HF Chat > About", curses.A_REVERSE)
+	stdscr.addstr(2,0, "About this program:", curses.A_REVERSE)
+	stdscr.addstr(3,0, "This program is a terminal chat application written in NCurses and Python for ham radio. It is designed")
+	stdscr.addstr(4,0, "mainly for HF but can be used over any medium that you can send audio (e.g. phone call, frs radio, etc)") #this perfectly lined up the first try...
+
+	with open("callsign.txt", "r") as f:
+		mycallsign = f.read().strip()
+	stdscr.addstr(6,0,"Info:", curses.A_REVERSE)
+	stdscr.addstr(7,0,"User callsign: " + mycallsign)
+	stdscr.addstr(8,0,"Baud rate: 1200")
+	stdscr.addstr(9,0,"TODO: put more info here")
+
+	stdscr.refresh()
+	stdscr.getch()
+	stdscr.clear()
 def main(stdscr):
 	height, width = stdscr.getmaxyx()
 	curses.curs_set(0)
@@ -353,7 +370,7 @@ def main(stdscr):
 			if current_row == 2:
 				settings(stdscr)
 			if current_row == 3:
-				settings(stdscr)
+				about(stdscr)
 			if current_row == len(menu) - 1:
 				break
 		print_menu(stdscr, current_row, True, menu)
