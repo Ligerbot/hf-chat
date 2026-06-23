@@ -1,9 +1,10 @@
+import ham_data_link_layer.mac as DataLinkLayer
+import asyncio
 import time
 import curses
 import curses.textpad
 
 menu = ['New QSO', 'RTTY Decoder', 'Settings', 'About', 'Exit']
-emails = ["Start Monitoring", "Exit"]
 
 #thanks for reading the code
 #a callsign isn't required to use the software but for things like auto identification (To be added) it would be needed.
@@ -14,13 +15,58 @@ try:
 except FileNotFoundError as e:
 	print("Callsign.txt not found. Creating empty file.")
 	with open("callsign.txt", "w") as f:
-		f.write("")
+		f.write("unset")
 
+async def recieve_loop():
+	output = DataLinkLayer.recieve()
+	return output
 def qso(stdscr):
+	queue = asyncio.Queue()
+	loop = asyncio.get_event_loop()
+
+	def receiver_thread():
+		while True:
+			data = DataLinkLayer.receive()
+			loop.call_soon_threadsafe(queue.put_nowait, data)
+
+	height, width = stdscr.getmaxyx()
+	input_buf = ""
+	messages = []
 	stdscr.clear()
 	stdscr.addstr(0,0, "HF Chat > QSO", curses.A_REVERSE)
-	stdscr.addstr(15, 30, "work in progress")
-	stdscr.refresh()
+
+	async def main_two():
+		nonlocal input_buf
+		loop.run_in_executor(None, receiver_thread)
+		stdscr.nodelay(True)
+		while True:
+			while not queue.empty():                      # ADD
+				messages.append(queue.get_nowait())       # ADD (replaces asyncio.run(curses.wrapper(...)))
+			y = 1
+			for message in messages:
+				stdscr.addstr(y, width // 2, message)    # CHANGE / to //
+				y = y + 1
+
+			stdscr.refresh()
+			curses.textpad.rectangle(stdscr, height - 3, (width // 2) - 20, height - 1, (width // 2) + 20)  # CHANGE / to //
+
+			key = stdscr.getch()                          # ADD (replaces stdscr.getch() at the bottom)
+			if key in (10, 13):
+				DataLinkLayer.send_data(input_buf)
+				input_buf = ""
+			elif key in (curses.KEY_BACKSPACE, 127):
+				input_buf = input_buf[:-1]
+			elif 32 <= key <= 126:
+				input_buf += chr(key)
+
+			stdscr.addstr(height - 2, (width // 2) - 20, "" + input_buf)  # ADD
+
+			await asyncio.sleep(0.05)                     # ADD
+
+	asyncio.run(main_two())
+
+
+#	stdscr.refresh()
 	stdscr.getch()  # each this call just waits for you to press any key
 	stdscr.clear()
 def print_menu(stdscr, selected, mainscreen, menu):
@@ -45,6 +91,10 @@ def print_menu(stdscr, selected, mainscreen, menu):
 def rtty(stdscr):
 	stdscr.clear()
 	stdscr.addstr(0,0, "HF Chat > RTTY Decoder", curses.A_REVERSE)
+	while True:
+		key = stdscr.getch() #needs to be fixed
+		if key == curses.KEY_ESCAPE:
+			break
 #	curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_BLUE)
 #	BLUE_BLACK = curses.color_pair(1)
 #	stdscr.addstr(1, 0, 'test', BLUE_BLACK | curses.A_BOLD)
@@ -125,7 +175,7 @@ def rtty(stdscr):
 #
 ##	stdscr.addstr(40,0,emails.decode("utf-8", errors="replace"))
 #	stdscr.refresh()
-	stdscr.getch()
+#	stdscr.getch()
 	stdscr.clear()
 def monitor(stdscr, exclude):
 	global emaildb
@@ -348,6 +398,9 @@ def about(stdscr):
 	stdscr.refresh()
 	stdscr.getch()
 	stdscr.clear()
+def asyncstuff(stdscr):
+	asyncio.run(curses.wrapper(lambda stdscr: qso(stdscr)))
+
 def main(stdscr):
 	height, width = stdscr.getmaxyx()
 	curses.curs_set(0)
@@ -363,8 +416,9 @@ def main(stdscr):
 			current_row += 1
 		elif key == curses.KEY_ENTER or key in [10, 13]:
 			if current_row == 0:
-				#monitor(stdscr, True)
 				qso(stdscr)
+				#monitor(stdscr, True)
+#				asyncio.run(curses.wrapper(lambda stdscr: main(stdscr))) qso(stdscr)
 			if current_row == 1:
 				rtty(stdscr)
 			if current_row == 2:
