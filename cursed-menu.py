@@ -17,58 +17,119 @@ except FileNotFoundError as e:
 	with open("callsign.txt", "w") as f:
 		f.write("unset")
 
-async def recieve_loop():
-	output = DataLinkLayer.recieve()
-	return output
 def qso(stdscr):
-	queue = asyncio.Queue()
-	loop = asyncio.get_event_loop()
-
-	def receiver_thread():
-		while True:
-			data = DataLinkLayer.receive()
-			loop.call_soon_threadsafe(queue.put_nowait, data)
-
+#	curses.start_color()
 	height, width = stdscr.getmaxyx()
-	input_buf = ""
-	messages = []
+	loop = asyncio.get_event_loop()
+	stdscr.nodelay(True)
 	stdscr.clear()
-	stdscr.addstr(0,0, "HF Chat > QSO", curses.A_REVERSE)
+	stdscr.refresh()
+	receiving = False
+	i = 0
+	def recive_stuff():
+		nonlocal receiving
+#		stdscr.addstr(1,0,"                                                                     ")
+		stdscr.refresh()
+		receiving = True
+		print("calling receive" + str(i), flush=True)
+		i = i + 1
+		data = DataLinkLayer.receive()
+		stdscr.addstr(3,0, "Data: " + str(data))
+		stdscr.refresh()
+		receiving = False
+#	input_win = curses.newwin(5, 5, (height // 2) - 5, (width // 2) - 19)
+#	box = curses.textpad.Textbox(input_win, insert_mode=True)
 
-	async def main_two():
-		nonlocal input_buf
-		loop.run_in_executor(None, receiver_thread)
-		stdscr.nodelay(True)
+	def sendstuff():
+		curses.textpad.rectangle(stdscr, (height - 9), (width // 2) - 40, height - 1, (width // 2) + 40)
+		text = curses.newwin(7, 79, height - 8, (width // 2) - 39)
+		stdscr.addstr((height - 10), (width // 2) - 39, "Press CTRL + g to finish editing")
+		box = curses.textpad.Textbox(text)
+		stdscr.refresh()
+		curses.curs_set(1)
+		box.edit()
+		tosend = box.gather()
+		del box
+		del text
+		stdscr.erase()
+		stdscr.addstr(5,0,"send: " + tosend)
+		stdscr.refresh()
+		DataLinkLayer.send_data(tosend)
+		curses.curs_set(0)
+	receiving = False
+	async def wait_for_typing():
+		nonlocal receiving
+#		curses.initscr()
 		while True:
-			while not queue.empty():                      # ADD
-				messages.append(queue.get_nowait())       # ADD (replaces asyncio.run(curses.wrapper(...)))
-			y = 1
-			for message in messages:
-				stdscr.addstr(y, width // 2, message)    # CHANGE / to //
-				y = y + 1
-
+#			stdscr.erase()
+			stdscr.addstr(0,0, "HF Chat > QSO", curses.A_REVERSE)
+			stdscr.addstr(1,0,"Reciever running at")
+			stdscr.addstr(1,20,str(time.ctime()))
 			stdscr.refresh()
-			curses.textpad.rectangle(stdscr, height - 3, (width // 2) - 20, height - 1, (width // 2) + 20)  # CHANGE / to //
+			if not receiving:
+				receiving = True
+				a = loop.run_in_executor(None, recive_stuff)
+			key = stdscr.getch()
+			if key == curses.KEY_ENTER or key in [10, 13]:
+				stdscr.addstr(15, 15, "need to open textpad now")
+#				curses.textpad.rectangle(stdscr, height - 3, (width // 2) - 10, height - 1, (width // 2) + 10)
+				sendstuff()
+#				time.sleep(1)
+			time.sleep(0.01)
+#	asyncio.run(curses.wrapper(wait_for_typing()))
+	asyncio.run(wait_for_typing())
 
-			key = stdscr.getch()                          # ADD (replaces stdscr.getch() at the bottom)
-			if key in (10, 13):
-				DataLinkLayer.send_data(input_buf)
-				input_buf = ""
-			elif key in (curses.KEY_BACKSPACE, 127):
-				input_buf = input_buf[:-1]
-			elif 32 <= key <= 126:
-				input_buf += chr(key)
-
-			stdscr.addstr(height - 2, (width // 2) - 20, "" + input_buf)  # ADD
-
-			await asyncio.sleep(0.05)                     # ADD
-
-	asyncio.run(main_two())
-
-
-#	stdscr.refresh()
-	stdscr.getch()  # each this call just waits for you to press any key
-	stdscr.clear()
+#def qso(stdscr):
+#	#claude helped make some of this code because I have no clue at all how to use asyncio
+#	queue = asyncio.Queue()
+#	loop = asyncio.get_event_loop()
+#
+#	def receiver_thread():
+#		while True:
+#			stdscr.clear()
+#			stdscr.addstr(0,0, "HF Chat > QSO", curses.A_REVERSE)
+#			stdscr.addstr(1,0,"Reciever running at")
+#			stdscr.addstr(1,20,str(time.ctime()))
+#			stdscr.refresh()
+#			data = DataLinkLayer.receive()
+#			loop.call_soon_threadsafe(queue.put_nowait, data)
+#
+#	height, width = stdscr.getmaxyx()
+#	messages = []
+#	stdscr.clear()
+#
+#	async def main_two():
+#		loop.run_in_executor(None, receiver_thread)
+#		input_win = curses.newwin(1, (width // 2) - 1, height - 2, (width // 2) - 9)
+#		box = curses.textpad.Textbox(input_win)
+#		curses.textpad.rectangle(stdscr, height - 3, (width // 2) - 10, height - 1, (width // 2) + 10)
+#		send_queue = asyncio.Queue()
+#		def input_thread():
+#			while True:
+#				text = box.edit(validate=lambda ch: 7 if ch in (10, 13) else ch)
+##				text = box.edit()
+#				message = text.strip()
+#				if message:
+#					loop.call_soon_threadsafe(send_queue.put_nowait, message)
+#		loop.run_in_executor(None, input_thread)
+#		while True:
+#			while not queue.empty():
+#				messages.append(queue.get_nowait())
+#			while not send_queue.empty():
+#				msg = send_queue.get_nowait()
+#				DataLinkLayer.send_data(msg)
+#				messages.append(f"[TX] {msg}")
+#			y = 1
+#			for message in messages[-(height - 4):]:
+#				stdscr.addstr(y, width // 2, message[:width // 2 - 1])
+#				y += 1
+#			stdscr.refresh()
+#			await asyncio.sleep(0.05)
+#	asyncio.run(main_two())
+#
+##	stdscr.refresh()
+#	stdscr.getch()  # each this call just waits for you to press any key
+#	stdscr.clear()
 def print_menu(stdscr, selected, mainscreen, menu):
 #	stdscr.clear()
 	stdscr.refresh()
@@ -360,6 +421,7 @@ def settings(stdscr):
 				curses.curs_set(1)
 				box.edit()
 				newcallsign = box.gather()
+				mycallsign = newcallsign
 				with open("callsign.txt", "w") as f:
 					f.write(newcallsign)
 				curses.curs_set(0)
@@ -394,12 +456,10 @@ def about(stdscr):
 	stdscr.addstr(7,0,"User callsign: " + mycallsign)
 	stdscr.addstr(8,0,"Baud rate: 1200")
 	stdscr.addstr(9,0,"TODO: put more info here")
-
+#	stdscr.
 	stdscr.refresh()
 	stdscr.getch()
 	stdscr.clear()
-def asyncstuff(stdscr):
-	asyncio.run(curses.wrapper(lambda stdscr: qso(stdscr)))
 
 def main(stdscr):
 	height, width = stdscr.getmaxyx()
